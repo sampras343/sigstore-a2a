@@ -17,110 +17,151 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to build and publish (e.g. v1.0.1)"
+        required: true
+        type: string
 
-permissions:
-  contents: write
-  id-token: write  # Required for Sigstore OIDC
+permissions: {}
 
 jobs:
-  release:
-    name: Create Release
+  build:
+    name: Build distribution
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Determine ref
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ref=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          fetch-depth: 0
+          ref: ${{ steps.ref.outputs.ref }}
+          persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Extract version from tag
+        id: version
+        run: |
+          tag="${{ steps.ref.outputs.ref }}"
+          version="${tag#refs/tags/v}"
+          version="${version#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify version consistency
+        run: |
+          tag_version="${{ steps.version.outputs.version }}"
+          pkg_version=$(python -c "
+          import re
+          with open('sigstore_a2a/__init__.py') as f:
+              match = re.search(r'__version__\s*=\s*\"([^\"]+)\"', f.read())
+              print(match.group(1))
+          ")
+          if [ "${tag_version}" != "${pkg_version}" ]; then
+            echo "::error::Tag version (${tag_version}) does not match package version (${pkg_version})"
+            exit 1
+          fi
+
+      - name: Set up Hatch
+        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc # install
+
+      - name: Build artifacts
+        run: hatch build
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          python-version: '3.13'
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 5
 
-      - name: Install UV
-        uses: astral-sh/setup-uv@803947b9bd8e9f986429fa0c5a41c367cd732b41 # v7.2.1
+  publish:
+    name: Publish to PyPI
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/rh-sigstore-a2a/${{ needs.build.outputs.version }}/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          version: "latest"
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
 
-      - name: Cache UV dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+  create_github_release:
+    name: Create GitHub Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          path: |
-            ~/.cache/uv
-            %LOCALAPPDATA%\uv\cache
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
-      - name: Install dependencies
-        run: |
-          uv sync --prerelease=allow
-
-      - name: Build package
-        run: |
-          uv build
-
-      - name: Sign GeoRoute Agent Card
-        env:
-          UV_PRERELEASE: allow
-        run: |
-          uv run sigstore-a2a sign examples/georoute-agent.json \
-            --output signed-georoute-agent.json \
-            --repository ${{ github.repository }}
-
-      - name: Sign Data Analysis Agent Card
-        env:
-          UV_PRERELEASE: allow
-        run: |
-          uv run sigstore-a2a sign examples/data-analysis-agent.json \
-            --output signed-data-analysis-agent.json \
-            --repository ${{ github.repository }}
-
-      - name: Verify GeoRoute Agent Card
-        env:
-          UV_PRERELEASE: allow
-        run: |
-          uv run sigstore-a2a verify signed-georoute-agent.json \
-            --repository ${{ github.repository }} \
-            --workflow "${{ github.workflow }}"
-
-      - name: Verify Data Analysis Agent Card
-        env:
-          UV_PRERELEASE: allow
-        run: |
-          uv run sigstore-a2a verify signed-data-analysis-agent.json \
-            --repository ${{ github.repository }} \
-            --workflow "${{ github.workflow }}"
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          echo "## Release Notes" > CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "This release includes cryptographically signed example Agent Cards demonstrating the sigstore-a2a signing process." >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "### Verification" >> CHANGELOG.md
-          echo "To verify the signed Agent Cards:" >> CHANGELOG.md
-          echo "\`\`\`bash" >> CHANGELOG.md
-          echo "sigstore-a2a verify signed-georoute-agent.json --repository ${{ github.repository }}" >> CHANGELOG.md
-          echo "sigstore-a2a verify signed-data-analysis-agent.json --repository ${{ github.repository }}" >> CHANGELOG.md
-          echo "\`\`\`" >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          echo "### Files" >> CHANGELOG.md
-          echo "- \`signed-georoute-agent.json\` - Signed GeoRoute Agent Card" >> CHANGELOG.md
-          echo "- \`signed-data-analysis-agent.json\` - Signed Data Analysis Agent Card" >> CHANGELOG.md
-          echo "- Distribution packages in the Assets section below" >> CHANGELOG.md
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+          name: dist
+          path: dist/
+      - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           draft: false
           prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
-          body_path: CHANGELOG.md
           files: |
             dist/*
-            signed-georoute-agent.json
-            signed-data-analysis-agent.json
           generate_release_notes: true
+
+  build_and_push_container:
+    name: Build and Push Docker Image
+    needs: [publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image
+        id: build_image
+        uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2.13
+        with:
+          containerfiles: |
+            ./Containerfile
+          image: sigstore/sigstore-a2a
+          tags: "latest ${{ github.ref_name }}"
+          archs: amd64
+          oci: false
+      - name: Push image to GHCR
+        uses: redhat-actions/push-to-registry@5ed88d269cf581ea9ef6dd6806d01562096bee9c # v2.8
+        id: push
+        with:
+          image: ${{ steps.build_image.outputs.image }}
+          tags: ${{ steps.build_image.outputs.tags }}
+          registry: ghcr.io
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/sigstore/sigstore-a2a
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
