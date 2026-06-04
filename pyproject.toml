@@ -60,7 +60,7 @@ Changelog = "https://github.com/sigstore/sigstore-a2a/blob/main/CHANGELOG.md"
 Documentation = "https://sigstore.github.io/sigstore-a2a"
 Source = "https://github.com/sigstore/sigstore-a2a"
 Issues = "https://github.com/sigstore/sigstore-a2a/issues"
-PyPI = "https://pypi.org/project/sigstore-a2a/"
+PyPI = "https://pypi.org/project/rh-sigstore-a2a/"
 
 [tool.hatch.version]
 path = "sigstore_a2a/__init__.py"
