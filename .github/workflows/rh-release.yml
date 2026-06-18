@@ -61,6 +61,8 @@ jobs:
           tag="${{ steps.ref.outputs.ref }}"
           version="${tag#refs/tags/rhtas-v}"
           version="${version#rhtas-v}"
+          # Normalize hyphenated prerelease to PEP 440: 0.0.1-rc1 → 0.0.1rc1
+          version=$(echo "$version" | sed -E 's/-?(rc|alpha|beta|dev)/\1/')
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Verify version consistency
