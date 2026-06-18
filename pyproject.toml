@@ -9,7 +9,10 @@ description = "Keyless signing library for A2A Agent Cards using Sigstore and SL
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Luke Hinds", email = "luke@rdrocket.com" }
+    { name = "Sigstore Authors", email = "sigstore-dev@googlegroups.com" }
+]
+maintainers = [
+    { name = "Sachin Sampras M", email = "sampras343@gmail.com" }
 ]
 requires-python = ">=3.11"
 classifiers = [
