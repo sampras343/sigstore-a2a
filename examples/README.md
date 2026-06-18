@@ -100,13 +100,15 @@ sigstore-a2a sign examples/georoute-agent.json \
 sigstore-a2a verify signed.json \
   --instance https://sigstore.example.com \
   --identity_provider https://token.actions.githubusercontent.com \
-  --identity "https://github.com/owner/repo/.github/workflows/sign-agentcard-tas.yml@refs/heads/main"
+  --identity "https://github.com/owner/repo/.github/workflows/sign-agentcard-tas.yml@refs/heads/main" \
+  --repository owner/repo
 
 # Verify with --trust_config
 sigstore-a2a verify signed.json \
   --trust_config examples/tas-trust-config.json \
   --identity_provider https://token.actions.githubusercontent.com \
-  --identity "https://github.com/owner/repo/.github/workflows/sign-agentcard-tas.yml@refs/heads/main"
+  --identity "https://github.com/owner/repo/.github/workflows/sign-agentcard-tas.yml@refs/heads/main" \
+  --repository owner/repo
 ```
 
 Note: `--staging`, `--instance`, and `--trust_config` are mutually exclusive.
