@@ -153,7 +153,7 @@ jobs:
         uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2.13
         with:
           containerfiles: |
-            ./Containerfile.rh
+            ./Containerfile
           image: securesign/sigstore-a2a
           tags: "latest ${{ github.ref_name }}"
           archs: amd64
