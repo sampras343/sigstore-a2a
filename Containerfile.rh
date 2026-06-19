@@ -1,6 +1,12 @@
 FROM registry.redhat.io/ubi9/python-312-minimal@sha256:b567fe1d804be8ee3d83c1e656c2199a5f2a91a45d537af212ce427dc8b43ac3 AS builder
 
+USER 0
 WORKDIR /app
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "ppc64le" ] || [ "$ARCH" = "s390x" ]; then \
+      PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')") && \
+      microdnf install -y gcc openssl-devel perl "python${PY_VER}-devel" && microdnf clean all; \
+    fi
 COPY sigstore_a2a /app/sigstore_a2a
 COPY pyproject.toml /app/
 COPY README.md /app/
