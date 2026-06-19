@@ -1,8 +1,9 @@
 FROM registry.redhat.io/ubi9/python-312-minimal@sha256:b567fe1d804be8ee3d83c1e656c2199a5f2a91a45d537af212ce427dc8b43ac3 AS builder
 
-ARG TARGETARCH
+USER 0
 WORKDIR /app
-RUN if [ "$TARGETARCH" = "ppc64le" ] || [ "$TARGETARCH" = "s390x" ]; then \
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "ppc64le" ] || [ "$ARCH" = "s390x" ]; then \
       microdnf install -y gcc openssl-devel && microdnf clean all; \
     fi
 COPY sigstore_a2a /app/sigstore_a2a
